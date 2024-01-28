@@ -1,7 +1,7 @@
 use anyhow::{Context, Result};
 use std::{
     io::Read,
-    process::{Command, Stdio},
+    process::{self, Command, Stdio},
 };
 
 // Usage: your_docker.sh run <image> <command> <arg1> <arg2> ...
@@ -11,7 +11,7 @@ fn main() -> Result<()> {
     let command_args = &args[4..];
 
     // spawn new process
-    let process = Command::new(command)
+    let mut process = Command::new(command)
         .args(command_args)
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
@@ -24,7 +24,7 @@ fn main() -> Result<()> {
         })?;
 
     match process.stdout {
-        Some(mut output) => {
+        Some(ref mut output) => {
             let mut std_out = String::new();
             output
                 .read_to_string(&mut std_out)
@@ -35,7 +35,7 @@ fn main() -> Result<()> {
     };
 
     match process.stderr {
-        Some(mut errput) => {
+        Some(ref mut errput) => {
             let mut std_err = String::new();
             errput
                 .read_to_string(&mut std_err)
@@ -45,5 +45,11 @@ fn main() -> Result<()> {
         None => todo!(),
     };
 
-    Ok(())
+    process::exit(
+        process
+            .wait()
+            .with_context(|| format!("Failed to wait for process"))?
+            .code()
+            .unwrap_or_default(),
+    );
 }
