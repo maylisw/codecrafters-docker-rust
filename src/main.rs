@@ -29,7 +29,7 @@ fn main() -> Result<()> {
             output
                 .read_to_string(&mut std_out)
                 .with_context(|| format!("Failed to read output '{:#?}' to string", output))?;
-            println!("{}", std_out);
+            print!("{}", std_out);
         }
         None => todo!(),
     };
@@ -40,7 +40,7 @@ fn main() -> Result<()> {
             errput
                 .read_to_string(&mut std_err)
                 .with_context(|| format!("Failed to read errput '{:#?}' to string", errput))?;
-            eprintln!("{}", std_err);
+            eprint!("{}", std_err);
         }
         None => todo!(),
     };
