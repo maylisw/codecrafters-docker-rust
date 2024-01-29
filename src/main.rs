@@ -3,6 +3,7 @@ use std::{
     fs,
     io::Read,
     os::unix,
+    path::PathBuf,
     process::{self, Command, Stdio},
 };
 
@@ -12,16 +13,41 @@ fn main() -> Result<()> {
     let command = &args[3];
     let command_args = &args[4..];
 
-    // filesystem isolation
-    let sandbox_dir = "/sandbox";
-    fs::create_dir(sandbox_dir)
-        .with_context(|| format!("Failed to create '{}' sandbox directory", sandbox_dir))?;
-    unix::fs::chroot(sandbox_dir)
-        .with_context(|| format!("Failed to chroot '{}' sandbox directory", sandbox_dir))?;
-    fs::create_dir("/dev").with_context(|| format!("Failed to create '/dev' directory"))?;
-    fs::File::create("/dev/null").with_context(|| format!("Failed to create '/dev/null' file"))?;
+    // sandbox dir
+    let sandbox_dir = PathBuf::from("./sandbox");
+    fs::create_dir(&sandbox_dir)
+        .with_context(|| format!("Failed to create '{:#?}' sandbox directory", sandbox_dir))?;
 
-    // change directories
+    // /dev/null
+    let dev = "dev";
+    fs::create_dir(sandbox_dir.join(dev))
+        .with_context(|| format!("Failed to create '{:#?}' directory", sandbox_dir.join(dev)))?;
+    fs::write("/dev/null", b"").with_context(|| format!("Failed to create '/dev/null' file"))?;
+
+    // copy in command
+    let command_path = sandbox_dir.join(
+        PathBuf::from(command)
+            .parent()
+            .unwrap()
+            .strip_prefix("/")
+            .with_context(|| {
+                format!(
+                    "Failed to strip '/' prefix from {:#?}",
+                    PathBuf::from(command).parent().unwrap(),
+                )
+            })?,
+    );
+    fs::create_dir_all(&command_path)
+        .with_context(|| format!("Failed to create directories for cmd {:#?}", command_path))?;
+    fs::copy(
+        command,
+        sandbox_dir.join(PathBuf::from(command).strip_prefix("/")?),
+    )
+    .with_context(|| format!("Failed to copy '{}'", command))?;
+
+    // change root to sandbox_dir
+    unix::fs::chroot(&sandbox_dir)
+        .with_context(|| format!("Failed to chroot '{:#?}' sandbox directory", sandbox_dir))?;
     std::env::set_current_dir("/").with_context(|| format!("Failed to set current dir to /"))?;
 
     // spawn new process
