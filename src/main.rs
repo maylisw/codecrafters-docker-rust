@@ -13,42 +13,7 @@ fn main() -> Result<()> {
     let command = &args[3];
     let command_args = &args[4..];
 
-    // sandbox dir
-    let sandbox_dir = PathBuf::from("./sandbox");
-    fs::create_dir(&sandbox_dir)
-        .with_context(|| format!("Failed to create '{:#?}' sandbox directory", sandbox_dir))?;
-
-    // /dev/null
-    let dev = "dev";
-    fs::create_dir(sandbox_dir.join(dev))
-        .with_context(|| format!("Failed to create '{:#?}' directory", sandbox_dir.join(dev)))?;
-    fs::write("/dev/null", b"").with_context(|| format!("Failed to create '/dev/null' file"))?;
-
-    // copy in command
-    let command_path = sandbox_dir.join(
-        PathBuf::from(command)
-            .parent()
-            .unwrap()
-            .strip_prefix("/")
-            .with_context(|| {
-                format!(
-                    "Failed to strip '/' prefix from {:#?}",
-                    PathBuf::from(command).parent().unwrap(),
-                )
-            })?,
-    );
-    fs::create_dir_all(&command_path)
-        .with_context(|| format!("Failed to create directories for cmd {:#?}", command_path))?;
-    fs::copy(
-        command,
-        sandbox_dir.join(PathBuf::from(command).strip_prefix("/")?),
-    )
-    .with_context(|| format!("Failed to copy '{}'", command))?;
-
-    // change root to sandbox_dir
-    unix::fs::chroot(&sandbox_dir)
-        .with_context(|| format!("Failed to chroot '{:#?}' sandbox directory", sandbox_dir))?;
-    std::env::set_current_dir("/").with_context(|| format!("Failed to set current dir to /"))?;
+    setup_fs_isolation(&command).expect("Failed to setup sandboxed filesystem");
 
     // spawn new process
     let mut process = Command::new(command)
@@ -92,4 +57,45 @@ fn main() -> Result<()> {
             .code()
             .unwrap_or_default(),
     );
+}
+
+fn setup_fs_isolation(command: &String) -> Result<(), anyhow::Error> {
+    // sandbox dir
+    let sandbox_dir = PathBuf::from("./sandbox");
+    fs::create_dir(&sandbox_dir)
+        .with_context(|| format!("Failed to create '{:#?}' sandbox directory", sandbox_dir))?;
+
+    // /dev/null
+    let dev = "dev";
+    fs::create_dir(sandbox_dir.join(dev))
+        .with_context(|| format!("Failed to create '{:#?}' directory", sandbox_dir.join(dev)))?;
+    fs::write("/dev/null", b"").with_context(|| format!("Failed to create '/dev/null' file"))?;
+
+    // copy in command
+    let command_path = sandbox_dir.join(
+        PathBuf::from(command)
+            .parent()
+            .unwrap()
+            .strip_prefix("/")
+            .with_context(|| {
+                format!(
+                    "Failed to strip '/' prefix from {:#?}",
+                    PathBuf::from(command).parent().unwrap(),
+                )
+            })?,
+    );
+    fs::create_dir_all(&command_path)
+        .with_context(|| format!("Failed to create directories for cmd {:#?}", command_path))?;
+    fs::copy(
+        command,
+        sandbox_dir.join(PathBuf::from(command).strip_prefix("/")?),
+    )
+    .with_context(|| format!("Failed to copy '{}'", command))?;
+
+    // change root to sandbox_dir
+    unix::fs::chroot(&sandbox_dir)
+        .with_context(|| format!("Failed to chroot '{:#?}' sandbox directory", sandbox_dir))?;
+    std::env::set_current_dir("/").with_context(|| format!("Failed to set current dir to /"))?;
+
+    return Ok(());
 }
