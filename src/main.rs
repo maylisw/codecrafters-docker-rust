@@ -62,12 +62,12 @@ fn main() -> Result<()> {
 fn setup_fs_isolation(command: &String) -> Result<(), anyhow::Error> {
     // sandbox dir
     let sandbox_dir = PathBuf::from("./sandbox");
-    fs::create_dir(&sandbox_dir)
+    fs::create_dir_all(&sandbox_dir)
         .with_context(|| format!("Failed to create '{:#?}' sandbox directory", sandbox_dir))?;
 
     // /dev/null
     let dev = "dev";
-    fs::create_dir(sandbox_dir.join(dev))
+    fs::create_dir_all(sandbox_dir.join(dev))
         .with_context(|| format!("Failed to create '{:#?}' directory", sandbox_dir.join(dev)))?;
     fs::write("/dev/null", b"").with_context(|| format!("Failed to create '/dev/null' file"))?;
 
