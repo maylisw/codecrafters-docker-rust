@@ -15,6 +15,8 @@ fn main() -> Result<()> {
 
     setup_fs_isolation(&command).expect("Failed to setup sandboxed filesystem");
 
+    unsafe { libc::unshare(libc::CLONE_NEWPID) };
+
     // spawn new process
     let mut process = Command::new(command)
         .args(command_args)
