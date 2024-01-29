@@ -1,6 +1,8 @@
 use anyhow::{Context, Result};
 use std::{
+    fs,
     io::Read,
+    os::unix,
     process::{self, Command, Stdio},
 };
 
@@ -9,6 +11,18 @@ fn main() -> Result<()> {
     let args: Vec<_> = std::env::args().collect();
     let command = &args[3];
     let command_args = &args[4..];
+
+    // filesystem isolation
+    let sandbox_dir = "/sandbox";
+    fs::create_dir(sandbox_dir)
+        .with_context(|| format!("Failed to create '{}' sandbox directory", sandbox_dir))?;
+    unix::fs::chroot(sandbox_dir)
+        .with_context(|| format!("Failed to chroot '{}' sandbox directory", sandbox_dir))?;
+    fs::create_dir("/dev").with_context(|| format!("Failed to create '/dev' directory"))?;
+    fs::File::create("/dev/null").with_context(|| format!("Failed to create '/dev/null' file"))?;
+
+    // change directories
+    std::env::set_current_dir("/").with_context(|| format!("Failed to set current dir to /"))?;
 
     // spawn new process
     let mut process = Command::new(command)
