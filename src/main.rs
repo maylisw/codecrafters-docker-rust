@@ -1,4 +1,5 @@
 use anyhow::{Context, Result};
+use libc;
 use std::{
     fs,
     io::Read,
@@ -7,13 +8,25 @@ use std::{
     process::{self, Command, Stdio},
 };
 
+mod docker;
+
 // Usage: your_docker.sh run <image> <command> <arg1> <arg2> ...
 fn main() -> Result<()> {
     let args: Vec<_> = std::env::args().collect();
+    let image = &args[2];
     let command = &args[3];
     let command_args = &args[4..];
 
-    setup_fs_isolation(&command).expect("Failed to setup sandboxed filesystem");
+    // sandbox dir
+    let sandbox_dir = PathBuf::from("./sandbox");
+    fs::create_dir_all(&sandbox_dir)
+        .with_context(|| format!("Failed to create '{:#?}' sandbox directory", sandbox_dir))?;
+
+    docker::download_image(image, &sandbox_dir)?;
+
+    setup_fs_isolation(&command, &sandbox_dir).expect("Failed to setup sandboxed filesystem");
+
+    println!("got manifest");
 
     unsafe { libc::unshare(libc::CLONE_NEWPID) };
 
@@ -61,12 +74,7 @@ fn main() -> Result<()> {
     );
 }
 
-fn setup_fs_isolation(command: &String) -> Result<(), anyhow::Error> {
-    // sandbox dir
-    let sandbox_dir = PathBuf::from("./sandbox");
-    fs::create_dir_all(&sandbox_dir)
-        .with_context(|| format!("Failed to create '{:#?}' sandbox directory", sandbox_dir))?;
-
+fn setup_fs_isolation(command: &String, sandbox_dir: &PathBuf) -> Result<(), anyhow::Error> {
     // /dev/null
     let dev = "dev";
     fs::create_dir_all(sandbox_dir.join(dev))
