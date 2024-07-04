@@ -1,111 +1,20 @@
-use anyhow::{Context, Result};
-use libc;
-use std::{
-    fs,
-    io::Read,
-    os::unix,
-    path::PathBuf,
-    process::{self, Command, Stdio},
-};
+use anyhow::Result;
+use std::process;
 
-mod docker;
+mod docker_client;
+mod filesystem;
+mod runtime;
 
 // Usage: your_docker.sh run <image> <command> <arg1> <arg2> ...
 fn main() -> Result<()> {
     let args: Vec<_> = std::env::args().collect();
-    let image = &args[2];
+    let full_image = &args[2];
     let command = &args[3];
     let command_args = &args[4..];
 
-    // sandbox dir
-    let sandbox_dir = PathBuf::from("./sandbox");
-    fs::create_dir_all(&sandbox_dir)
-        .with_context(|| format!("Failed to create '{:#?}' sandbox directory", sandbox_dir))?;
-
-    docker::download_image(image, &sandbox_dir)?;
-
-    setup_fs_isolation(&command, &sandbox_dir).expect("Failed to setup sandboxed filesystem");
-
-    println!("got manifest");
-
-    unsafe { libc::unshare(libc::CLONE_NEWPID) };
-
-    // spawn new process
-    let mut process = Command::new(command)
-        .args(command_args)
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .spawn()
-        .with_context(|| {
-            format!(
-                "Failed to run '{}' with arguments {:?}",
-                command, command_args
-            )
-        })?;
-
-    match process.stdout {
-        Some(ref mut output) => {
-            let mut std_out = String::new();
-            output
-                .read_to_string(&mut std_out)
-                .with_context(|| format!("Failed to read output '{:#?}' to string", output))?;
-            print!("{}", std_out);
-        }
-        None => todo!(),
-    };
-
-    match process.stderr {
-        Some(ref mut errput) => {
-            let mut std_err = String::new();
-            errput
-                .read_to_string(&mut std_err)
-                .with_context(|| format!("Failed to read errput '{:#?}' to string", errput))?;
-            eprint!("{}", std_err);
-        }
-        None => todo!(),
-    };
-
-    process::exit(
-        process
-            .wait()
-            .with_context(|| format!("Failed to wait for process"))?
-            .code()
-            .unwrap_or_default(),
-    );
-}
-
-fn setup_fs_isolation(command: &String, sandbox_dir: &PathBuf) -> Result<(), anyhow::Error> {
-    // /dev/null
-    let dev = "dev";
-    fs::create_dir_all(sandbox_dir.join(dev))
-        .with_context(|| format!("Failed to create '{:#?}' directory", sandbox_dir.join(dev)))?;
-    fs::write("/dev/null", b"").with_context(|| format!("Failed to create '/dev/null' file"))?;
-
-    // copy in command
-    let command_path = sandbox_dir.join(
-        PathBuf::from(command)
-            .parent()
-            .unwrap()
-            .strip_prefix("/")
-            .with_context(|| {
-                format!(
-                    "Failed to strip '/' prefix from {:#?}",
-                    PathBuf::from(command).parent().unwrap(),
-                )
-            })?,
-    );
-    fs::create_dir_all(&command_path)
-        .with_context(|| format!("Failed to create directories for cmd {:#?}", command_path))?;
-    fs::copy(
-        command,
-        sandbox_dir.join(PathBuf::from(command).strip_prefix("/")?),
-    )
-    .with_context(|| format!("Failed to copy '{}'", command))?;
-
-    // change root to sandbox_dir
-    unix::fs::chroot(&sandbox_dir)
-        .with_context(|| format!("Failed to chroot '{:#?}' sandbox directory", sandbox_dir))?;
-    std::env::set_current_dir("/").with_context(|| format!("Failed to set current dir to /"))?;
-
-    return Ok(());
+    let image_fs = filesystem::IsolatedFileSystem::setup(command)?;
+    let client = docker_client::DockerClient::new();
+    client.download_image(full_image, &image_fs.root_dir)?;
+    image_fs.chroot()?;
+    process::exit(runtime::run(command, command_args)?);
 }
