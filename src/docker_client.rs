@@ -54,13 +54,9 @@ impl DockerClient {
     }
 
     pub fn download_image(&self, full_image: &str, path: &PathBuf) -> Result<()> {
-        let (image, tag)  = match full_image.split_once(":") {
+        let (image, tag) = match full_image.split_once(":") {
             Some((image, tag)) => (image, tag),
-            None => return Err(
-                anyhow!(
-                    format!("Error: \"{full_image}\" is incorrectly formatted, please provide and image and tag seperated by a colon")
-                )
-            )
+            None => (full_image, "latest"),
         };
         let token = self.get_token(image)?;
         let manifest = self.get_manifest(image, tag, &token.token)?;
