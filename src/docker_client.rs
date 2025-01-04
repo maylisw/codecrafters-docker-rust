@@ -13,7 +13,7 @@ struct AuthToken {
     token: String,
 }
 
-#[derive(Deserialize)]
+#[derive(Debug, Deserialize)]
 struct ImageManifest {
     #[serde(rename = "schemaVersion")]
     schema_version: i64,
@@ -21,10 +21,11 @@ struct ImageManifest {
     media_type: String,
     #[serde(default)]
     config: Config,
+    #[serde(default)]
     layers: Vec<Layer>,
 }
 
-#[derive(Deserialize, Default)]
+#[derive(Debug, Deserialize, Default)]
 struct Config {
     #[serde(rename = "mediaType")]
     media_type: String,
@@ -32,7 +33,7 @@ struct Config {
     digest: String,
 }
 
-#[derive(Deserialize)]
+#[derive(Debug, Deserialize)]
 struct Layer {
     #[serde(rename = "mediaType")]
     media_type: String,
@@ -60,6 +61,7 @@ impl DockerClient {
         };
         let token = self.get_token(image)?;
         let manifest = self.get_manifest(image, tag, &token.token)?;
+        println!("Downloading image: {:#?}", manifest);
 
         for l in &manifest.layers {
             self.pull_layer_and_unpack(image, &l.digest, &token.token, path)?;
@@ -83,6 +85,7 @@ impl DockerClient {
     }
 
     fn get_manifest(&self, image: &str, tag: &str, token_str: &String) -> Result<ImageManifest> {
+        // TODO: check different image manifest types
         return Ok(self
             .client
             .get(format!(
